@@ -1,0 +1,13 @@
+{
+  "name": "hive-ctx",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm -w @hive/ctx-bindings run build",
+    "build:native": "npm -w @hive/ctx-bindings run build:native",
+    "clean": "npm -w @hive/ctx-bindings run clean"
+  }
+}
+

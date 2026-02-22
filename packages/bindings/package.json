@@ -1,0 +1,22 @@
+{
+  "name": "@hive/ctx-bindings",
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "*.node"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "build:native": "napi build --cargo-cwd ../../crates/hive-ctx-core --platform --release --output-dir .",
+    "clean": "rm -rf dist *.node"
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "^2.18.4",
+    "@types/node": "^20.11.30",
+    "typescript": "^5.4.5"
+  }
+}
+

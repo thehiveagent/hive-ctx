@@ -1,0 +1,27 @@
+[package]
+name = "hive-ctx-core"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "hive_ctx"
+crate-type = ["cdylib"]
+
+[package.metadata.napi]
+name = "hive_ctx"
+
+[dependencies]
+blake3 = "1"
+chrono = { version = "0.4", features = ["serde"] }
+napi = { version = "2", default-features = false, features = ["napi4"] }
+napi-derive = "2"
+parking_lot = "0.12"
+rayon = "1"
+rusqlite = { version = "0.31", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+thiserror = "1"
+uuid = { version = "1", features = ["v4", "serde"] }
+
+[build-dependencies]
+napi-build = "2"
+

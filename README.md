@@ -36,6 +36,12 @@ Core modules (Rust): `graph`, `memory`, `fingerprint`, `classifier`, `retrieval`
 - Layers are trimmed in order (episodes → graph nodes → fingerprint entries) when the budget is exceeded, and warm sessions only send fingerprint deltas thanks to the cached session state.
 - Exposed addon API: `pipeline_build` (via `HiveCtxEngine`), which returns the compiled system prompt, actual token usage, and the list of layers that contributed.
 
+## TypeScript bindings
+
+- `packages/bindings` now exports `HiveCtx` (constructor config: `storagePath`, optional `budgetTokens`, `model`, `profile`) plus `remember`, `episode`, and plugin integration around the `pipeline_build` core.
+- Plugin authors implement `{ name, retrieve(message, weights) }` to inject custom retrieval content if tokens remain; context builds append plugin contributions while tracking token usage in the returned `ContextResult`.
+- Examples under `packages/bindings/src/examples` (`basic.ts`, `hive-integration.ts`) show the minimal usage pattern and how The Hive agent would integrate with the new APIs.
+
 ## Classifier & fingerprint
 
 - `crates/hive-ctx-core/src/classifier.rs` implements a heuristic message classifier that scores each incoming message along temporal, personal, technical, and emotional axes (0.0–1.0) plus a type (`casual`, `question`, `task`, `emotional`) and session state (`COLD_START`, `WARM`, `CONTEXT_SHIFT`, `EMOTIONAL_SHIFT`, `TASK_MODE`).

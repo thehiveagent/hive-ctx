@@ -1,6 +1,6 @@
 {
-  "name": "@hive/ctx-bindings",
-  "version": "0.1.0",
+  "name": "@imisbahk/hive-ctx",
+  "version": "1.0.0",
   "private": true,
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -19,4 +19,3 @@
     "typescript": "^5.4.5"
   }
 }
-

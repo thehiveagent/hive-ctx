@@ -16,7 +16,7 @@ const EMOTIONAL_KEYWORDS: &[&str] = &[
 const QUESTION_KEYWORDS: &[&str] = &["how", "what", "why", "when", "where", "who", "can", "could", "would", "should"];
 const TASK_KEYWORDS: &[&str] = &["please", "need to", "should", "must", "schedule", "deploy", "plan", "complete"];
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum MessageType {
   Casual,
   Question,

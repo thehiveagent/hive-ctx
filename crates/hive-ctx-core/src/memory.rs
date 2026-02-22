@@ -22,6 +22,15 @@ impl MemoryTier {
       MemoryTier::Tier3 => "tier3",
     }
   }
+
+  pub fn from_str(value: &str) -> Option<Self> {
+    match value.to_lowercase().as_str() {
+      "tier1" => Some(MemoryTier::Tier1),
+      "tier2" => Some(MemoryTier::Tier2),
+      "tier3" => Some(MemoryTier::Tier3),
+      _ => None,
+    }
+  }
 }
 
 #[derive(Debug, Clone)]
@@ -290,62 +299,83 @@ impl MemoryStore {
     let mut stmt = conn.prepare(
       "SELECT id, created_at, text, expires_at FROM tier1_entries ORDER BY created_at DESC LIMIT ?1",
     )?;
-    let rows = stmt.query_map(params![limit as i64], |row| {
-      let created_at: DateTime<Utc> = DateTime::parse_from_rfc3339(row.get::<_, String>("created_at")?.as_str())?
-        .with_timezone(&Utc);
-      let expires_at = DateTime::parse_from_rfc3339(row.get::<_, String>("expires_at")?.as_str())?.with_timezone(&Utc);
+    let mut rows = stmt.query(params![limit as i64])?;
+    let mut records = Vec::new();
 
-      Ok(MemoryRecord {
+    while let Some(row) = rows.next()? {
+      let created_at_str: String = row.get("created_at")?;
+      let created_at = DateTime::parse_from_rfc3339(&created_at_str)
+        .map_err(MemoryError::Chrono)?
+        .with_timezone(&Utc);
+      let expires_at_str: String = row.get("expires_at")?;
+      let expires_at = DateTime::parse_from_rfc3339(&expires_at_str)
+        .map_err(MemoryError::Chrono)?
+        .with_timezone(&Utc);
+
+      records.push(MemoryRecord {
         id: row.get("id")?,
         tier: MemoryTier::Tier1,
         created_at,
         expires_at: Some(expires_at),
         text: row.get("text")?,
-      })
-    })?;
+      });
+    }
 
-    rows.collect::<Result<Vec<_>, _>>()?
+    Ok(records)
   }
 
   fn query_tier2(&self, conn: &Connection, limit: usize) -> Result<Vec<MemoryRecord>, MemoryError> {
     let mut stmt = conn.prepare(
       "SELECT id, created_at, summary, expires_at FROM tier2_summaries ORDER BY created_at DESC LIMIT ?1",
     )?;
-    let rows = stmt.query_map(params![limit as i64], |row| {
-      let created_at: DateTime<Utc> = DateTime::parse_from_rfc3339(row.get::<_, String>("created_at")?.as_str())?
-        .with_timezone(&Utc);
-      let expires_at = DateTime::parse_from_rfc3339(row.get::<_, String>("expires_at")?.as_str())?.with_timezone(&Utc);
+    let mut rows = stmt.query(params![limit as i64])?;
+    let mut records = Vec::new();
 
-      Ok(MemoryRecord {
+    while let Some(row) = rows.next()? {
+      let created_at_str: String = row.get("created_at")?;
+      let created_at = DateTime::parse_from_rfc3339(&created_at_str)
+        .map_err(MemoryError::Chrono)?
+        .with_timezone(&Utc);
+      let expires_at_str: String = row.get("expires_at")?;
+      let expires_at = DateTime::parse_from_rfc3339(&expires_at_str)
+        .map_err(MemoryError::Chrono)?
+        .with_timezone(&Utc);
+
+      records.push(MemoryRecord {
         id: row.get("id")?,
         tier: MemoryTier::Tier2,
         created_at,
         expires_at: Some(expires_at),
         text: row.get("summary")?,
-      })
-    })?;
+      });
+    }
 
-    rows.collect::<Result<Vec<_>, _>>()?
+    Ok(records)
   }
 
   fn query_tier3(&self, conn: &Connection, limit: usize) -> Result<Vec<MemoryRecord>, MemoryError> {
     let mut stmt = conn.prepare(
       "SELECT id, created_at, fact_text FROM tier3_crystallized ORDER BY created_at DESC LIMIT ?1",
     )?;
-    let rows = stmt.query_map(params![limit as i64], |row| {
-      let created_at: DateTime<Utc> = DateTime::parse_from_rfc3339(row.get::<_, String>("created_at")?.as_str())?
+    let mut rows = stmt.query(params![limit as i64])?;
+    let mut records = Vec::new();
+
+    while let Some(row) = rows.next()? {
+      let created_at_str: String = row.get("created_at")?;
+      let created_at = DateTime::parse_from_rfc3339(&created_at_str)
+        .map_err(MemoryError::Chrono)?
         .with_timezone(&Utc);
 
-      Ok(MemoryRecord {
+      records.push(MemoryRecord {
         id: row.get("id")?,
         tier: MemoryTier::Tier3,
         created_at,
         expires_at: None,
         text: row.get("fact_text")?,
-      })
-    })?;
+      });
+    }
 
-    rows.collect::<Result<Vec<_>, _>>()?
+    Ok(records)
   }
 
   fn summary_exists(&self, conn: &Connection, source_hash: &str) -> Result<bool, MemoryError> {

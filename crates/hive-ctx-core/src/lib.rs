@@ -10,11 +10,13 @@ use fingerprint::{FingerprintEntry, FingerprintResult, FingerprintStore};
 use graph::{GraphDatabase, GraphNodeRecord, NodeCategory};
 use memory::{
   MemoryCompressionResult, MemoryCrystallizationResult, MemoryRecord, MemorySnapshot, MemoryStats,
-  MemoryStore,
+  MemoryStore, MemoryTier,
 };
+use chrono::{DateTime, Utc};
 use napi::{Error as NapiError, Result as NapiResult};
-use napi_derive::{napi, napi(object)};
+use napi_derive::napi;
 use parking_lot::Mutex;
+use retrieval::{RetrievalEngine, RetrievalError, RetrievalRankCandidate, RetrievalResult, RetrievalWeights};
 use std::{collections::HashMap, path::Path, sync::Arc};
 
 #[napi(object)]
@@ -25,6 +27,34 @@ pub struct GraphNodeDto {
   pub created_at: String,
   pub decay_score: f64,
   pub metadata: Option<String>,
+}
+
+#[napi(object)]
+pub struct RetrievalWeightsDto {
+  pub temporal_weight: f64,
+  pub personal_weight: f64,
+  pub technical_weight: f64,
+  pub emotional_weight: f64,
+}
+
+#[napi(object)]
+pub struct RetrievalResultDto {
+  pub source: String,
+  pub text: String,
+  pub score: f64,
+  pub tokens: u32,
+  pub created_at: String,
+  pub category: Option<String>,
+  pub tier: Option<String>,
+}
+
+#[napi(object)]
+pub struct RetrievalCandidateDto {
+  pub text: String,
+  pub created_at: Option<String>,
+  pub category: Option<String>,
+  pub node_id: Option<i64>,
+  pub tier: Option<String>,
 }
 
 #[napi(object)]
@@ -80,6 +110,56 @@ impl From<FingerprintResult> for FingerprintResultDto {
       compiled_at: result.compiled_at.to_rfc3339(),
     }
   }
+}
+
+impl From<RetrievalResult> for RetrievalResultDto {
+  fn from(result: RetrievalResult) -> Self {
+    Self {
+      source: result.source.to_string(),
+      text: result.text,
+      score: result.score,
+      tokens: result.tokens as u32,
+      created_at: result.created_at.to_rfc3339(),
+      category: result.category.map(|cat| cat.as_str().to_string()),
+      tier: result.tier.map(|tier| tier.as_str().to_string()),
+    }
+  }
+}
+
+fn map_retrieval_error(err: RetrievalError) -> NapiError {
+  NapiError::from_reason(err.to_string())
+}
+
+fn retrieval_weights_from_dto(dto: RetrievalWeightsDto) -> RetrievalWeights {
+  RetrievalWeights {
+    temporal: dto.temporal_weight,
+    personal: dto.personal_weight,
+    technical: dto.technical_weight,
+    emotional: dto.emotional_weight,
+  }
+}
+
+fn parse_candidate(dto: RetrievalCandidateDto) -> NapiResult<RetrievalRankCandidate> {
+  let created_at = if let Some(value) = dto.created_at {
+    DateTime::parse_from_rfc3339(&value)
+      .map_err(|err| NapiError::from_reason(err.to_string()))?
+      .with_timezone(&Utc)
+  } else {
+    Utc::now()
+  };
+
+  let category = dto.category.map(|category| NodeCategory::from_str(&category));
+  let tier = dto
+    .tier
+    .and_then(|tier| MemoryTier::from_str(&tier));
+
+  Ok(RetrievalRankCandidate {
+    text: dto.text,
+    created_at,
+    category,
+    node_id: dto.node_id,
+    tier,
+  })
 }
 
 #[napi(object)]
@@ -152,6 +232,7 @@ pub struct HiveCtxEngine {
   memory: Arc<MemoryStore>,
   classifier: Arc<Mutex<Classifier>>,
   fingerprint: Arc<Mutex<FingerprintStore>>,
+  retrieval: Arc<RetrievalEngine>,
 }
 
 fn map_graph_error(err: graph::GraphError) -> NapiError {
@@ -200,8 +281,7 @@ fn stats_to_dto(stats: MemoryStats) -> MemoryStatsDto {
 
 #[napi]
 impl HiveCtxEngine {
-  #[napi(constructor)]
-  pub fn new(storage_path: String, budget_tokens: Option<u32>) -> NapiResult<Self> {
+  fn try_new(storage_path: String, budget_tokens: Option<u32>) -> NapiResult<Self> {
     let storage_dir = Path::new(&storage_path);
     std::fs::create_dir_all(storage_dir).map_err(|err| {
       NapiError::from_reason(format!("failed to create storage directory: {}", err))
@@ -215,6 +295,7 @@ impl HiveCtxEngine {
     );
     let classifier = Arc::new(Mutex::new(Classifier::default()));
     let fingerprint = Arc::new(Mutex::new(FingerprintStore::new()));
+    let retrieval_engine = Arc::new(RetrievalEngine::new(Arc::clone(&graph), Arc::clone(&memory)));
 
     Ok(Self {
       storage_path,
@@ -223,8 +304,16 @@ impl HiveCtxEngine {
       memory,
       classifier,
       fingerprint,
+      retrieval: retrieval_engine,
     })
   }
+
+  #[napi(constructor)]
+  pub fn new(storage_path: String, budget_tokens: Option<u32>) -> Self {
+    Self::try_new(storage_path, budget_tokens)
+      .expect("HiveCtxEngine construction failed")
+  }
+
 
   #[napi(getter)]
   pub fn storage_path(&self) -> String {
@@ -269,10 +358,15 @@ impl HiveCtxEngine {
     &self,
     pattern: Option<String>,
     category: Option<String>,
+    limit: Option<u32>,
   ) -> NapiResult<Vec<GraphNodeDto>> {
     let nodes = self
       .graph
-      .query(pattern.as_deref(), parse_category(category))
+      .query(
+        pattern.as_deref(),
+        parse_category(category),
+        limit.unwrap_or(100) as usize,
+      )
       .map_err(map_graph_error)?;
     Ok(nodes.into_iter().map(GraphNodeDto::from).collect())
   }
@@ -323,6 +417,41 @@ impl HiveCtxEngine {
   pub fn memory_stats(&self) -> NapiResult<MemoryStatsDto> {
     let stats = self.memory.stats().map_err(map_memory_error)?;
     Ok(stats_to_dto(stats))
+  }
+
+  #[napi]
+  pub fn retrieval_search(
+    &self,
+    text: String,
+    weights: RetrievalWeightsDto,
+    limit: Option<u32>,
+  ) -> NapiResult<Vec<RetrievalResultDto>> {
+    let limit = limit.unwrap_or(12) as usize;
+    let result = self
+      .retrieval
+      .search(&text, retrieval_weights_from_dto(weights), limit)
+      .map_err(map_retrieval_error)?;
+    Ok(result.into_iter().map(RetrievalResultDto::from).collect())
+  }
+
+  #[napi]
+  pub fn retrieval_rank(
+    &self,
+    text: String,
+    weights: RetrievalWeightsDto,
+    candidates: Vec<RetrievalCandidateDto>,
+    limit: Option<u32>,
+  ) -> NapiResult<Vec<RetrievalResultDto>> {
+    let parsed = candidates
+      .into_iter()
+      .map(parse_candidate)
+      .collect::<Result<Vec<_>, _>>()?;
+    let limit = limit.unwrap_or(12) as usize;
+    let result = self
+      .retrieval
+      .rank(&text, retrieval_weights_from_dto(weights), parsed, limit)
+      .map_err(map_retrieval_error)?;
+    Ok(result.into_iter().map(RetrievalResultDto::from).collect())
   }
 
   #[napi]

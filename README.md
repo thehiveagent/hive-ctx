@@ -24,6 +24,12 @@ Core modules (Rust): `graph`, `memory`, `fingerprint`, `classifier`, `retrieval`
 - `memory_compress` moves Tier 1 → Tier 2 nightly while skipping unchanged text via `blake3` hashes; `memory_crystallize` runs monthly to push Tier 2 summaries into Tier 3, running `graph_add_node` on the extracted facts.
 - Exposed addon APIs: `memory_store`, `memory_retrieve`, `memory_compress`, `memory_crystallize`, `memory_stats` (via `HiveCtxEngine`).
 
+## Retrieval
+
+- `crates/hive-ctx-core/src/retrieval.rs` ranks nodes and memory records by combining temporal recency, graph centrality, semantic keyword overlap, and emotional relevance weighted according to the classifier's four axis scores.
+- Results merge knowledge-graph labels and episode-store entries, include token estimates, and can be reranked via `retrieval_rank`.
+- Exposed addon APIs: `retrieval_search`, `retrieval_rank` (via `HiveCtxEngine`), both accept the four classifier weights so downstream clients pick the most contextually relevant content.
+
 ## Classifier & fingerprint
 
 - `crates/hive-ctx-core/src/classifier.rs` implements a heuristic message classifier that scores each incoming message along temporal, personal, technical, and emotional axes (0.0–1.0) plus a type (`casual`, `question`, `task`, `emotional`) and session state (`COLD_START`, `WARM`, `CONTEXT_SHIFT`, `EMOTIONAL_SHIFT`, `TASK_MODE`).

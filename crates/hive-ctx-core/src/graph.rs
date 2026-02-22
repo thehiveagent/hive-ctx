@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use regex::Regex;
-use rusqlite::{params, OptionalExtension, Connection};
+use rusqlite::{params, Connection, ToSql};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashSet, VecDeque};
 use std::path::Path;
@@ -165,8 +165,12 @@ impl GraphDatabase {
     let mut stmt = conn.prepare(
       "SELECT id, label, category, created_at, decay_score, metadata FROM nodes WHERE label = ?1 AND category = ?2",
     )?;
-    let record = stmt.query_row(params![label, category.as_str()], |row| GraphNodeRecord::from_row(row))?;
-    Ok(Some(record))
+    let mut rows = stmt.query(params![label, category.as_str()])?;
+    if let Some(row) = rows.next()? {
+      Ok(Some(GraphNodeRecord::from_row(row)?))
+    } else {
+      Ok(None)
+    }
   }
 
   pub fn add_edge(
@@ -188,6 +192,7 @@ impl GraphDatabase {
     &self,
     pattern: Option<&str>,
     category: Option<NodeCategory>,
+    limit: usize,
   ) -> Result<Vec<GraphNodeRecord>, GraphError> {
     let conn = self.conn.lock();
     let mut sql = "SELECT id, label, category, created_at, decay_score, metadata FROM nodes".to_string();
@@ -209,14 +214,16 @@ impl GraphDatabase {
       sql.push_str(&clauses.join(" AND "));
     }
 
-    sql.push_str(" ORDER BY created_at DESC LIMIT 100");
+    let limit = if limit == 0 { 1 } else { limit };
+    sql.push_str(&format!(" ORDER BY created_at DESC LIMIT {}", limit));
 
     let mut stmt = conn.prepare(&sql)?;
-    let rows = stmt.query_map(params_vec.iter().map(|p| &**p), |row| GraphNodeRecord::from_row(row))?;
+    let params_refs: Vec<&dyn ToSql> = params_vec.iter().map(|p| &**p).collect();
+    let mut rows = stmt.query(params_refs.as_slice())?;
 
     let mut result = Vec::new();
-    for row in rows {
-      result.push(row?);
+    while let Some(row) = rows.next()? {
+      result.push(GraphNodeRecord::from_row(row)?);
     }
 
     Ok(result)
@@ -281,10 +288,18 @@ impl GraphDatabase {
     let mut stmt = conn.prepare(
       "SELECT id, label, category, created_at, decay_score, metadata FROM nodes WHERE id = ?1",
     )?;
-    let maybe = stmt
-      .query_row(params![id], |row| GraphNodeRecord::from_row(row))
-      .optional()?;
-    Ok(maybe)
+    let mut rows = stmt.query(params![id])?;
+    if let Some(row) = rows.next()? {
+      Ok(Some(GraphNodeRecord::from_row(row)?))
+    } else {
+      Ok(None)
+    }
+  }
+
+  pub fn node_degree(&self, node_id: i64) -> Result<usize, GraphError> {
+    let conn = self.conn.lock();
+    let neighbors = self.neighbors(&conn, node_id)?;
+    Ok(neighbors.len())
   }
 
   fn neighbors(&self, conn: &Connection, node_id: i64) -> Result<Vec<i64>, GraphError> {

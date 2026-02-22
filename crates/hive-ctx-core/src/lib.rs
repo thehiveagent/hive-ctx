@@ -16,6 +16,7 @@ use chrono::{DateTime, Utc};
 use napi::{Error as NapiError, Result as NapiResult};
 use napi_derive::napi;
 use parking_lot::Mutex;
+use pipeline::{PipelineEngine, PipelineError, PipelineLayers, PipelineResult};
 use retrieval::{RetrievalEngine, RetrievalError, RetrievalRankCandidate, RetrievalResult, RetrievalWeights};
 use std::{collections::HashMap, path::Path, sync::Arc};
 
@@ -55,6 +56,44 @@ pub struct RetrievalCandidateDto {
   pub category: Option<String>,
   pub node_id: Option<i64>,
   pub tier: Option<String>,
+}
+
+#[napi(object)]
+pub struct PipelineLayersDto {
+  pub episodes: u32,
+  pub graph_nodes: u32,
+  pub fingerprint_entries: u32,
+  pub fingerprint_mode: String,
+  pub included_layers: Vec<String>,
+}
+
+#[napi(object)]
+pub struct PipelineResultDto {
+  pub system_prompt: String,
+  pub token_count: u32,
+  pub layers: PipelineLayersDto,
+}
+
+impl From<PipelineLayers> for PipelineLayersDto {
+  fn from(layers: PipelineLayers) -> Self {
+    Self {
+      episodes: layers.episodes as u32,
+      graph_nodes: layers.graph_nodes as u32,
+      fingerprint_entries: layers.fingerprint_entries as u32,
+      fingerprint_mode: layers.fingerprint_mode,
+      included_layers: layers.included_layers,
+    }
+  }
+}
+
+impl From<PipelineResult> for PipelineResultDto {
+  fn from(result: PipelineResult) -> Self {
+    Self {
+      system_prompt: result.system_prompt,
+      token_count: (result.token_count.min(u32::MAX as usize)) as u32,
+      layers: PipelineLayersDto::from(result.layers),
+    }
+  }
 }
 
 #[napi(object)]
@@ -127,6 +166,10 @@ impl From<RetrievalResult> for RetrievalResultDto {
 }
 
 fn map_retrieval_error(err: RetrievalError) -> NapiError {
+  NapiError::from_reason(err.to_string())
+}
+
+fn map_pipeline_error(err: PipelineError) -> NapiError {
   NapiError::from_reason(err.to_string())
 }
 
@@ -233,6 +276,7 @@ pub struct HiveCtxEngine {
   classifier: Arc<Mutex<Classifier>>,
   fingerprint: Arc<Mutex<FingerprintStore>>,
   retrieval: Arc<RetrievalEngine>,
+  pipeline: Arc<PipelineEngine>,
 }
 
 fn map_graph_error(err: graph::GraphError) -> NapiError {
@@ -296,6 +340,11 @@ impl HiveCtxEngine {
     let classifier = Arc::new(Mutex::new(Classifier::default()));
     let fingerprint = Arc::new(Mutex::new(FingerprintStore::new()));
     let retrieval_engine = Arc::new(RetrievalEngine::new(Arc::clone(&graph), Arc::clone(&memory)));
+    let pipeline_engine = Arc::new(PipelineEngine::new(
+      Arc::clone(&classifier),
+      Arc::clone(&fingerprint),
+      Arc::clone(&retrieval_engine),
+    ));
 
     Ok(Self {
       storage_path,
@@ -305,6 +354,7 @@ impl HiveCtxEngine {
       classifier,
       fingerprint,
       retrieval: retrieval_engine,
+      pipeline: pipeline_engine,
     })
   }
 
@@ -417,6 +467,21 @@ impl HiveCtxEngine {
   pub fn memory_stats(&self) -> NapiResult<MemoryStatsDto> {
     let stats = self.memory.stats().map_err(map_memory_error)?;
     Ok(stats_to_dto(stats))
+  }
+
+  #[napi]
+  pub fn pipeline_build(
+    &self,
+    message: String,
+    user_profile: HashMap<String, String>,
+    token_budget: Option<u32>,
+  ) -> NapiResult<PipelineResultDto> {
+    let budget = token_budget.map(|value| value as usize);
+    let result = self
+      .pipeline
+      .build(&message, user_profile, budget)
+      .map_err(map_pipeline_error)?;
+    Ok(PipelineResultDto::from(result))
   }
 
   #[napi]

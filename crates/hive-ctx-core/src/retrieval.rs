@@ -27,12 +27,7 @@ pub enum RetrievalError {
   Memory(#[from] MemoryError),
 }
 
-impl RetrievalWeights {
-  pub fn axis_weight(&self) -> f64 {
-    self.temporal + self.personal + self.technical + self.emotional
-  }
-}
-
+#[derive(Clone)]
 #[derive(Debug)]
 pub enum RetrievalSource {
   Graph(i64),
@@ -48,7 +43,7 @@ impl fmt::Display for RetrievalSource {
   }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct RetrievalResult {
   pub source: RetrievalSource,
   pub text: String,
@@ -59,7 +54,7 @@ pub struct RetrievalResult {
   pub tier: Option<MemoryTier>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct RetrievalRankCandidate {
   pub text: String,
   pub created_at: DateTime<Utc>,

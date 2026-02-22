@@ -1,0 +1,18 @@
+{
+  "cache": "cache",
+  "db": "index.db",
+  "enableWarmup": true,
+  "ignorePatterns": [
+    "node_modules/**",
+    "*.test.*",
+    "*.spec.*",
+    "*.d.ts",
+    "dist/**",
+    "build/**"
+  ],
+  "indexInterval": 300000,
+  "maxConcurrency": 6,
+  "maxFileSize": 1048576,
+  "version": 1,
+  "workspace": ".rocket"
+}

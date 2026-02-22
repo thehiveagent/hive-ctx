@@ -8,3 +8,10 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
+.rocket/*
+!.rocket/README.md
+!.rocket/ARCHITECTURE.md
+!.rocket/SYMBOLS.md
+!.rocket/config.json
+.rocket/index.db
+.rocket/cache/

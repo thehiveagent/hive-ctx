@@ -30,6 +30,12 @@ Core modules (Rust): `graph`, `memory`, `fingerprint`, `classifier`, `retrieval`
 - Results merge knowledge-graph labels and episode-store entries, include token estimates, and can be reranked via `retrieval_rank`.
 - Exposed addon APIs: `retrieval_search`, `retrieval_rank` (via `HiveCtxEngine`), both accept the four classifier weights so downstream clients pick the most contextually relevant content.
 
+## Pipeline
+
+- `crates/hive-ctx-core/src/pipeline.rs` orchestrates every module: it classifies the message, fetches retrieval context, compiles the fingerprint, and assembles the final prompt within a configurable token budget (default 300).
+- Layers are trimmed in order (episodes → graph nodes → fingerprint entries) when the budget is exceeded, and warm sessions only send fingerprint deltas thanks to the cached session state.
+- Exposed addon API: `pipeline_build` (via `HiveCtxEngine`), which returns the compiled system prompt, actual token usage, and the list of layers that contributed.
+
 ## Classifier & fingerprint
 
 - `crates/hive-ctx-core/src/classifier.rs` implements a heuristic message classifier that scores each incoming message along temporal, personal, technical, and emotional axes (0.0–1.0) plus a type (`casual`, `question`, `task`, `emotional`) and session state (`COLD_START`, `WARM`, `CONTEXT_SHIFT`, `EMOTIONAL_SHIFT`, `TASK_MODE`).

@@ -2,6 +2,10 @@
 
 Rust core + N-API TypeScript bindings monorepo.
 
+## Part of The Hive
+
+`hive-ctx` is the context engine powering [The Hive](https://github.com/thehiveagent/hive) — 
+a globally distributed AI agent platform.
 ## Layout
 
 - `crates/hive-ctx-core`: Rust core compiled to a `.node` binary via `napi-rs`

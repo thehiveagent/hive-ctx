@@ -24,6 +24,12 @@ Core modules (Rust): `graph`, `memory`, `fingerprint`, `classifier`, `retrieval`
 - `memory_compress` moves Tier 1 → Tier 2 nightly while skipping unchanged text via `blake3` hashes; `memory_crystallize` runs monthly to push Tier 2 summaries into Tier 3, running `graph_add_node` on the extracted facts.
 - Exposed addon APIs: `memory_store`, `memory_retrieve`, `memory_compress`, `memory_crystallize`, `memory_stats` (via `HiveCtxEngine`).
 
+## Classifier & fingerprint
+
+- `crates/hive-ctx-core/src/classifier.rs` implements a heuristic message classifier that scores each incoming message along temporal, personal, technical, and emotional axes (0.0–1.0) plus a type (`casual`, `question`, `task`, `emotional`) and session state (`COLD_START`, `WARM`, `CONTEXT_SHIFT`, `EMOTIONAL_SHIFT`, `TASK_MODE`).
+- `crates/hive-ctx-core/src/fingerprint.rs` compiles profile data into a key-value token-efficient fingerprint, tracking deltas since the last compile and automatically expanding into a full compile whenever the classifier reports context shifts, task mode, or a cold start.
+- Exposed addon APIs: `classify_message`, `fingerprint_compile` (via `HiveCtxEngine`) so JS clients can reuse the same session context.
+
 ## Rust API (exported to Node)
 
 The main exported struct is `HiveCtxEngine`:

@@ -5,7 +5,8 @@ mod memory;
 mod pipeline;
 mod retrieval;
 
-use chrono::{DateTime, Utc};
+use classifier::{Classifier, ClassifierResult};
+use fingerprint::{FingerprintEntry, FingerprintResult, FingerprintStore};
 use graph::{GraphDatabase, GraphNodeRecord, NodeCategory};
 use memory::{
   MemoryCompressionResult, MemoryCrystallizationResult, MemoryRecord, MemorySnapshot, MemoryStats,
@@ -13,7 +14,8 @@ use memory::{
 };
 use napi::{Error as NapiError, Result as NapiResult};
 use napi_derive::{napi, napi(object)};
-use std::{path::Path, sync::Arc};
+use parking_lot::Mutex;
+use std::{collections::HashMap, path::Path, sync::Arc};
 
 #[napi(object)]
 pub struct GraphNodeDto {
@@ -23,6 +25,61 @@ pub struct GraphNodeDto {
   pub created_at: String,
   pub decay_score: f64,
   pub metadata: Option<String>,
+}
+
+#[napi(object)]
+pub struct ClassifierResultDto {
+  pub temporal_weight: f64,
+  pub personal_weight: f64,
+  pub technical_weight: f64,
+  pub emotional_weight: f64,
+  pub message_type: String,
+  pub session_state: String,
+}
+
+impl From<ClassifierResult> for ClassifierResultDto {
+  fn from(result: ClassifierResult) -> Self {
+    Self {
+      temporal_weight: result.temporal_weight,
+      personal_weight: result.personal_weight,
+      technical_weight: result.technical_weight,
+      emotional_weight: result.emotional_weight,
+      message_type: result.message_type.as_str().to_string(),
+      session_state: result.session_state.as_str().to_string(),
+    }
+  }
+}
+
+#[napi(object)]
+pub struct FingerprintEntryDto {
+  pub key: String,
+  pub value: String,
+}
+
+impl From<FingerprintEntry> for FingerprintEntryDto {
+  fn from(entry: FingerprintEntry) -> Self {
+    Self {
+      key: entry.key,
+      value: entry.value,
+    }
+  }
+}
+
+#[napi(object)]
+pub struct FingerprintResultDto {
+  pub entries: Vec<FingerprintEntryDto>,
+  pub delta_only: bool,
+  pub compiled_at: String,
+}
+
+impl From<FingerprintResult> for FingerprintResultDto {
+  fn from(result: FingerprintResult) -> Self {
+    Self {
+      entries: result.entries.into_iter().map(FingerprintEntryDto::from).collect(),
+      delta_only: result.delta_only,
+      compiled_at: result.compiled_at.to_rfc3339(),
+    }
+  }
 }
 
 #[napi(object)]
@@ -93,6 +150,8 @@ pub struct HiveCtxEngine {
   budget_tokens: Option<u32>,
   graph: Arc<GraphDatabase>,
   memory: Arc<MemoryStore>,
+  classifier: Arc<Mutex<Classifier>>,
+  fingerprint: Arc<Mutex<FingerprintStore>>,
 }
 
 fn map_graph_error(err: graph::GraphError) -> NapiError {
@@ -154,12 +213,16 @@ impl HiveCtxEngine {
     let memory = Arc::new(
       MemoryStore::open(&memory_path, Arc::clone(&graph)).map_err(map_memory_error)?,
     );
+    let classifier = Arc::new(Mutex::new(Classifier::default()));
+    let fingerprint = Arc::new(Mutex::new(FingerprintStore::new()));
 
     Ok(Self {
       storage_path,
       budget_tokens,
       graph,
       memory,
+      classifier,
+      fingerprint,
     })
   }
 
@@ -260,5 +323,23 @@ impl HiveCtxEngine {
   pub fn memory_stats(&self) -> NapiResult<MemoryStatsDto> {
     let stats = self.memory.stats().map_err(map_memory_error)?;
     Ok(stats_to_dto(stats))
+  }
+
+  #[napi]
+  pub fn classify_message(&self, text: String) -> NapiResult<ClassifierResultDto> {
+    let mut classifier = self.classifier.lock();
+    let result = classifier.classify(&text);
+    Ok(ClassifierResultDto::from(result))
+  }
+
+  #[napi]
+  pub fn fingerprint_compile(
+    &self,
+    profile: HashMap<String, String>,
+  ) -> NapiResult<FingerprintResultDto> {
+    let state = self.classifier.lock().current_state();
+    let mut fingerprint = self.fingerprint.lock();
+    let result = fingerprint.compile(profile, state);
+    Ok(FingerprintResultDto::from(result))
   }
 }

@@ -8,5 +8,6 @@
     "build": "npm -w @imisbahk/hive-ctx run build",
     "build:native": "npm -w @imisbahk/hive-ctx run build:native",
     "clean": "npm -w @imisbahk/hive-ctx run clean"
-  }
+  },
+  "version": "1.0.0"
 }

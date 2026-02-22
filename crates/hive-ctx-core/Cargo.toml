@@ -21,7 +21,7 @@ rusqlite = { version = "0.31", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 thiserror = "1"
 uuid = { version = "1", features = ["v4", "serde"] }
+regex = "1"
 
 [build-dependencies]
 napi-build = "2"
-
